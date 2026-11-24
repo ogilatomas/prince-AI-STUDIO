@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <title>Prince AI Studio</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#" aria-label="Prince AI Studio home">
+        <span class="brand-mark">P</span><span>PRINCE <b>AI STUDIO</b></span>
+      </a>
+      <div class="workspace-label">PRIVATE WORKSPACE</div>
+      <nav>
+        <button class="nav-item active" data-page="dashboard"><span>⌂</span> Dashboard</button>
+        <button class="nav-item" data-page="video"><span>✦</span> Text to Video</button>
+        <button class="nav-item" data-page="clipper"><span>▣</span> AI Clipper</button>
+        <button class="nav-item" data-page="projects"><span>▤</span> My Projects</button>
+        <button class="nav-item" data-page="settings"><span>⚙</span> Settings</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="owner-pill"><span class="online-dot"></span> Owner access only</div>
+        <small>Private prototype · v0.1</small>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="mobile-brand"><span class="brand-mark">P</span> PRINCE AI STUDIO</div>
+        <div class="topbar-right"><span class="status-dot"></span> Private workspace <span class="avatar">P</span></div>
+      </header>
+
+      <section class="page active" id="dashboard">
+        <div class="welcome-row">
+          <div><p class="eyebrow">YOUR CREATIVE WORKSPACE</p><h1>Make something amazing.</h1>
+          <p class="muted">Generate videos, turn long videos into short clips, and manage your projects.</p></div>
+          <span class="date-chip">✦ AI CREATION STUDIO</span>
+        </div>
+        <div class="stats-grid">
+          <article class="stat-card"><span class="stat-icon purple">◷</span><div><small>DAILY VIDEO TARGET</small><strong>Up to 3 minutes</strong><p>Text-to-video target</p></div></article>
+          <article class="stat-card"><span class="stat-icon cyan">♙</span><div><small>WORKSPACE</small><strong>Owner only</strong><p>Private access</p></div></article>
+          <article class="stat-card"><span class="stat-icon green">▣</span><div><small>YOUR PROJECTS</small><strong>Ready to create</strong><p>Your work in one place</p></div></article>
+        </div>
+        <div class="section-heading"><div><p class="eyebrow">CREATE</p><h2>What would you like to make?</h2></div></div>
+        <div class="feature-grid">
+          <article class="feature-card video-feature">
+            <div class="feature-top"><span class="feature-icon">✦</span><span class="tag">VIDEO GENERATOR</span></div>
+            <h3>Text to Video</h3><p>Turn your idea or script into a video with scenes, narration, sound effects and music.</p>
+            <div class="duration-preview"><span>15 sec</span><span>1 min</span><span>2 min</span><span class="selected">3 min</span></div>
+            <button class="primary-btn" data-go="video">Create a video <span>→</span></button>
+          </article>
+          <article class="feature-card clip-feature">
+            <div class="feature-top"><span class="feature-icon">▣</span><span class="tag">VIDEO REPURPOSING</span></div>
+            <h3>AI Clipper</h3><p>Paste a supported video link or upload a video, then create clips with automatic captions.</p>
+            <div class="feature-pills"><span>Paste a link</span><span>Upload video</span><span>Caption templates</span></div>
+            <button class="secondary-btn" data-go="clipper">Open AI Clipper <span>→</span></button>
+          </article>
+        </div>
+        <div class="info-banner"><div class="banner-icon">✧</div><div><b>Fast Studio is the default creation mode</b><p>AI-created scenes, motion effects, narration and audio are assembled into a finished video. Full AI Motion can be added as computing resources allow.</p></div></div>
+      </section>
+
+      <section class="page" id="video">
+        <div class="page-heading"><p class="eyebrow">AI VIDEO GENERATOR</p><h1>Text to Video</h1><p class="muted">Describe the video you want and choose its maximum duration.</p></div>
+        <div class="builder-grid">
+          <div class="panel">
+            <label for="videoPrompt">Describe your video</label>
+            <textarea id="videoPrompt" rows="6" placeholder="Example: A cinematic story about a young entrepreneur building a successful business in Nairobi..."></textarea>
+            <div class="field-row">
+              <div class="field"><label for="videoStyle">Visual style</label><select id="videoStyle"><option>Cinematic</option><option>Realistic</option><option>Animation</option><option>Documentary</option><option>Social media</option></select></div>
+              <div class="field"><label for="videoRatio">Aspect ratio</label><select id="videoRatio"><option>9:16 · Vertical</option><option>16:9 · Landscape</option><option>1:1 · Square</option></select></div>
+            </div>
+            <label>Maximum video duration</label>
+            <div class="duration-grid" id="videoDurations">
+              <button data-seconds="15">15 sec</button><button data-seconds="30">30 sec</button><button data-seconds="60" class="chosen">1 min</button><button data-seconds="90">1 min 30 sec</button><button data-seconds="120">2 min</button><button data-seconds="150">2 min 30 sec</button><button data-seconds="180">3 min</button>
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="voice">Voice</label><select id="voice"><option>Natural voice</option><option>Warm storyteller</option><option>Energetic presenter</option><option>No narration</option></select></div>
+              <div class="field"><label for="audio">Audio</label><select id="audio"><option>Voice + music + sound effects</option><option>Voice + music</option><option>Music + sound effects</option></select></div>
+            </div>
+            <button class="primary-btn wide" id="videoGenerate">Prepare video <span>→</span></button>
+            <p class="fine-print">Prototype only: generation is not connected to an AI video engine yet. The 3-minute daily allowance is a design target, not a guaranteed free compute quota.</p>
+          </div>
+          <aside class="panel side-panel"><span class="tag">GENERATION SETTINGS</span><h3>Fast Studio</h3><p class="muted">The default mode combines generated scene visuals, motion, narration and audio.</p><div class="setting-line"><span>Full AI Motion</span><span class="soft-tag">Optional later</span></div><div class="setting-line"><span>Automatic sound design</span><span class="check">✓</span></div><div class="setting-line"><span>Scene planning</span><span class="check">✓</span></div><div class="setting-line"><span>Daily target</span><b>3 minutes</b></div><div class="notice">Actual generation speed and availability depend on the free computing service used.</div></aside>
+        </div>
+      </section>
+
+      <section class="page" id="clipper">
+        <div class="page-heading"><p class="eyebrow">VIDEO REPURPOSING</p><h1>AI Clipper</h1><p class="muted">Bring in a video, choose your clip length and style your spoken-word captions.</p></div>
+        <div class="clipper-layout">
+          <div class="panel">
+            <div class="step-title"><span>01</span><div><b>Import your video</b><small>Paste a link or upload a video file</small></div></div>
+            <label for="videoUrl">Video link</label>
+            <div class="input-with-icon"><span>↗</span><input id="videoUrl" type="url" placeholder="Paste a YouTube, TikTok, Instagram or Facebook link"></div>
+            <div class="or-divider"><span>OR</span></div>
+            <label class="upload-box" for="videoFile"><span class="upload-icon">⇧</span><b>Upload a video</b><small>Choose a video saved on your device</small><em id="fileName">MP4, MOV and other supported formats</em><input id="videoFile" type="file" accept="video/*"></label>
+            <div class="step-title spaced"><span>02</span><div><b>Clip settings</b><small>Choose the maximum length of each clip</small></div></div>
+            <label>Maximum duration per clip</label>
+            <div class="duration-grid compact" id="clipDurations">
+              <button data-seconds="15">15 sec</button><button data-seconds="30">30 sec</button><button data-seconds="60" class="chosen">1 min</button><button data-seconds="90">90 sec</button><button data-seconds="120">2 min</button><button data-seconds="180">3 min</button>
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="clipCount">Number of clips</label><select id="clipCount"><option>Auto select best moments</option><option>3 clips</option><option>5 clips</option><option>10 clips</option><option>15 clips</option><option>20 clips</option><option>Custom</option></select></div>
+              <div class="field"><label for="clipRatio">Export format</label><select id="clipRatio"><option>9:16 · TikTok / Reels / Shorts</option><option>16:9 · YouTube</option><option>1:1 · Square</option></select></div>
+            </div>
+            <div class="step-title spaced"><span>03</span><div><b>Choose a caption template</b><small>Spoken words will be transcribed and synchronized on screen</small></div></div>
+            <div class="template-grid" id="templates">
+              <button class="template-card selected" data-template="bold"><span class="sample bold-sample">THIS IS<br><mark>IMPORTANT!</mark></span><b>Bold captions</b><small>White and yellow emphasis</small></button>
+              <button class="template-card" data-template="minimal"><span class="sample minimal-sample">A new beginning</span><b>Minimal</b><small>Clean subtitles</small></button>
+              <button class="template-card" data-template="karaoke"><span class="sample karaoke-sample">Follow <mark>your</mark> dream</span><b>Karaoke</b><small>Word-by-word highlighting</small></button>
+              <button class="template-card" data-template="highlight"><span class="sample highlight-sample">Make it <mark>HAPPEN</mark></span><b>Highlighted words</b><small>Emphasize key phrases</small></button>
+            </div>
+            <div class="caption-options"><label class="check-row"><input type="checkbox" checked> Automatically transcribe spoken words</label><label class="check-row"><input type="checkbox" checked> Synchronize captions with speech</label><label class="check-row"><input type="checkbox" checked> Allow me to edit captions before export</label></div>
+            <div class="step-title spaced"><span>04</span><div><b>AI Viral Hook Generator <span class="new-tag">NEW</span></b><small>Create a scroll-stopping opening statement for every clip</small></div></div>
+            <div class="hook-card">
+              <div class="hook-card-head"><span>✦ AI OPENING HOOK</span><span class="auto-tag">ON BY DEFAULT</span></div>
+              <label class="check-row hook-toggle"><input id="hookEnabled" type="checkbox" checked> Add an attention-grabbing hook at the start of each clip</label>
+              <label class="check-row hook-toggle"><input id="hookEmojis" type="checkbox" checked> Add relevant emojis automatically</label>
+              <label for="hookText">Edit your opening statement</label>
+              <textarea id="hookText" rows="3" placeholder="AI will write a hook based on the actual video content. Example: 😱 WAIT… YOU NEED TO SEE WHAT HAPPENS NEXT! 👀"></textarea>
+              <p class="fine-print">The connected AI will create a unique, relevant hook for each clip. You can edit it before export. No misleading claims or unrelated clickbait.</p>
+            </div>
+            <button class="primary-btn wide" id="clipGenerate">Prepare my clips <span>→</span></button>
+            <p class="fine-print">Link importing depends on each platform's access rules. If a link cannot be processed, upload a video you own or have permission to use. This prototype does not download or process videos yet.</p>
+          </div>
+          <aside class="panel preview-panel">
+            <span class="tag">LIVE DESIGN PREVIEW</span><h3>Caption appearance</h3>
+            <div class="phone-preview"><div class="phone-top"><span>● ● ●</span><span>PREVIEW</span></div><div class="fake-person"><div class="head"></div><div class="body-shape"></div></div><div class="caption-overlay" id="captionOverlay"><span>THIS IS</span><mark>IMPORTANT!</mark></div></div>
+            <div class="preview-meta"><span class="online-dot"></span> Selected template: <b id="templateName">Bold captions</b></div>
+            <div class="hook-preview"><span>AI VIRAL HOOK PREVIEW</span><strong id="hookPreviewText">😱 WAIT… YOU NEED TO SEE WHAT HAPPENS NEXT! 👀</strong><small>Opening statement · shown before the main clip</small></div>
+            <div class="preview-note"><b>AI Viral Hook Generator</b><p>Creates a relevant opening line with optional emojis to encourage viewers to stop scrolling and keep watching.</p></div>
+            <div class="preview-note"><b>Automatic spoken-word captions</b><p>Speech recognition turns the speaker's words into timed text, then applies your selected template.</p></div>
+            <div class="preview-note"><b>Clip duration is separate</b><p>The selected duration applies to each clip. It does not limit the total number of clips you can request.</p></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" id="projects"><div class="page-heading"><p class="eyebrow">YOUR WORK</p><h1>My Projects</h1><p class="muted">Your generated videos and clipped projects will appear here.</p></div><div class="empty-state"><span>▤</span><h3>No projects yet</h3><p>Start with Text to Video or AI Clipper to create your first project.</p><button class="primary-btn" data-go="video">Create your first video →</button></div></section>
+      <section class="page" id="settings"><div class="page-heading"><p class="eyebrow">WORKSPACE</p><h1>Settings</h1><p class="muted">Private owner workspace settings.</p></div><div class="panel settings-panel"><div class="setting-line"><span>Workspace access</span><b>Owner only</b></div><div class="setting-line"><span>Public registration</span><b class="soft-tag">Disabled</b></div><div class="setting-line"><span>Default creation mode</span><b>Fast Studio</b></div><div class="setting-line"><span>Daily video generation target</span><b>Up to 3 minutes</b></div><p class="fine-print">Authentication, secure storage, generation services and actual processing must be connected before launch.</p></div></section>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="script.js"></script>
+</body>
+</html>
