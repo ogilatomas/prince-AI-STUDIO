@@ -1,9 +1,14 @@
 import os
-from fastapi import FastAPI
+import subprocess
+import tempfile
+
+import imageio_ffmpeg
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="Prince AI Studio API", version="0.1.0")
+app = FastAPI(title="Prince AI Studio API", version="0.2.0")
 
 # Allow the live Render website to call this API.
 # Add your exact frontend URL to FRONTEND_ORIGIN in Render environment variables
@@ -54,3 +59,45 @@ def prepare_video(request: PrepareVideoRequest):
         "message": "Your request reached the Prince AI Studio backend. Video generation is not connected yet.",
         "received": request.model_dump()
     }
+
+
+@app.get("/api/ffmpeg-check")
+def ffmpeg_check():
+    # Tells us whether FFmpeg is available on this server.
+    try:
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        result = subprocess.run(
+            [ffmpeg_path, "-version"],
+            capture_output=True, text=True, timeout=30
+        )
+        first_line = result.stdout.splitlines()[0] if result.stdout else "unknown"
+        return {"ffmpeg_available": True, "version": first_line}
+    except Exception as error:
+        return {"ffmpeg_available": False, "error": str(error)}
+
+
+@app.get("/api/ffmpeg-test")
+def ffmpeg_test():
+    # Makes a 5-second test video with FFmpeg so we can prove the server can create videos.
+    try:
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"FFmpeg not found: {error}")
+
+    output_path = os.path.join(tempfile.gettempdir(), "prince_test.mp4")
+    command = [
+        ffmpeg_path, "-y",
+        "-f", "lavfi", "-i", "testsrc2=size=360x640:rate=24",
+        "-t", "5",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        output_path,
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="FFmpeg took too long.")
+
+    if result.returncode != 0 or not os.path.exists(output_path):
+        raise HTTPException(status_code=500, detail=f"FFmpeg failed: {result.stderr[-500:]}")
+
+    return FileResponse(output_path, media_type="video/mp4", filename="prince_test.mp4")
