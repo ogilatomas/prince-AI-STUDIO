@@ -138,3 +138,95 @@ def gemini_check():
             names.append(name.replace("models/", ""))
 
     return {"key_found": True, "key_works": True, "flash_models": names[:15]}
+
+
+import re
+
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+ALLOWED_CAMERA = ["zoom_in", "zoom_out", "pan_left", "pan_right"]
+
+
+def call_gemini_for_json(instruction: str) -> dict:
+    key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is missing on the server.")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    body = json.dumps({
+        "contents": [{"parts": [{"text": instruction}]}],
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        if error.code == 429:
+            raise HTTPException(status_code=429, detail="The free AI limit was reached. Please wait a while and try again.")
+        raise HTTPException(status_code=502, detail=f"Gemini returned error {error.code} for model {GEMINI_MODEL}.")
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Could not reach Gemini: {error}")
+
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+        return json.loads(text)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Gemini answered, but not in the format we expected. Please try again.")
+
+
+@app.post("/api/plan-scenes")
+def plan_scenes(request: PrepareVideoRequest):
+    scene_count = max(3, min(30, round(request.duration_seconds / 6)))
+    no_narration = request.voice == "No narration"
+
+    instruction = f"""
+You are a professional short-video director.
+Plan a video of exactly {request.duration_seconds} seconds with exactly {scene_count} scenes.
+
+Video idea: {request.prompt}
+Visual style: {request.style}
+Aspect ratio: {request.aspect_ratio}
+Narration voice style: {request.voice}
+
+Rules:
+- Write the narration in the same language as the video idea.
+- Narration must be honest and not misleading. Do not invent fake facts.
+- Each scene's narration must be short enough to speak within that scene's duration (about 2 words per second).
+- {"Leave narration as an empty string because there is no narration." if no_narration else "Every scene needs narration."}
+- image_prompt must be a detailed English description of ONE still picture for that scene, matching the visual style. Do not include text or words inside the picture.
+- camera must be one of: {", ".join(ALLOWED_CAMERA)}.
+- The scene durations must add up to {request.duration_seconds} seconds.
+
+Return ONLY JSON in exactly this shape:
+{{"title": "short video title", "scenes": [{{"scene_number": 1, "duration_seconds": 5, "narration": "text", "image_prompt": "description", "camera": "zoom_in"}}]}}
+"""
+    plan = call_gemini_for_json(instruction)
+
+    scenes = plan.get("scenes")
+    if not isinstance(scenes, list) or len(scenes) == 0:
+        raise HTTPException(status_code=502, detail="The AI did not return any scenes. Please try again.")
+
+    clean_scenes = []
+    for number, scene in enumerate(scenes, start=1):
+        camera = scene.get("camera", "zoom_in")
+        clean_scenes.append({
+            "scene_number": number,
+            "duration_seconds": float(scene.get("duration_seconds", 5)),
+            "narration": "" if no_narration else str(scene.get("narration", "")),
+            "image_prompt": str(scene.get("image_prompt", "")),
+            "camera": camera if camera in ALLOWED_CAMERA else "zoom_in",
+        })
+
+    return {
+        "status": "scenes_planned",
+        "model": GEMINI_MODEL,
+        "title": str(plan.get("title", "Untitled video")),
+        "total_seconds": sum(s["duration_seconds"] for s in clean_scenes),
+        "scenes": clean_scenes,
+    }
