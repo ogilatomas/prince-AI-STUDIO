@@ -230,3 +230,60 @@ Return ONLY JSON in exactly this shape:
         "total_seconds": sum(s["duration_seconds"] for s in clean_scenes),
         "scenes": clean_scenes,
     }
+
+
+import time
+
+FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
+
+
+def call_gemini_for_json(instruction: str) -> dict:
+    # This newer version replaces the older one above. It retries when Google is busy
+    # and switches to backup models if needed.
+    key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is missing on the server.")
+
+    body = json.dumps({
+        "contents": [{"parts": [{"text": instruction}]}],
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
+    }).encode("utf-8")
+
+    models_to_try = [GEMINI_MODEL] + [m for m in FALLBACK_MODELS if m != GEMINI_MODEL]
+    last_problem = "unknown"
+
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        for attempt in range(2):
+            request = urllib.request.Request(
+                url,
+                data=body,
+                headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=40) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as error:
+                last_problem = f"error {error.code} for model {model_name}"
+                if error.code in (429, 500, 503):
+                    time.sleep(3)
+                    continue
+                break
+            except Exception as error:
+                last_problem = f"{error} for model {model_name}"
+                time.sleep(2)
+                continue
+
+            try:
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+                return json.loads(text)
+            except Exception:
+                last_problem = f"unexpected answer format from model {model_name}"
+                break
+
+    raise HTTPException(
+        status_code=502,
+        detail=f"Gemini is busy or unavailable right now. Last problem: {last_problem}. Please try again in a minute.",
+    )
