@@ -101,3 +101,40 @@ def ffmpeg_test():
         raise HTTPException(status_code=500, detail=f"FFmpeg failed: {result.stderr[-500:]}")
 
     return FileResponse(output_path, media_type="video/mp4", filename="prince_test.mp4")
+
+
+import json
+import urllib.request
+import urllib.error
+
+
+@app.get("/api/gemini-check")
+def gemini_check():
+    # Checks that the secret key exists and works. It never shows the key.
+    key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        return {
+            "key_found": False,
+            "message": "GEMINI_API_KEY was not found. Check the Environment page on Render."
+        }
+
+    request = urllib.request.Request(
+        "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+        headers={"x-goog-api-key": key},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        return {"key_found": True, "key_works": False, "http_status": error.code}
+    except Exception as error:
+        return {"key_found": True, "key_works": False, "error": str(error)}
+
+    names = []
+    for model in data.get("models", []):
+        methods = model.get("supportedGenerationMethods", [])
+        name = model.get("name", "")
+        if "generateContent" in methods and "flash" in name:
+            names.append(name.replace("models/", ""))
+
+    return {"key_found": True, "key_works": True, "flash_models": names[:15]}
