@@ -52,7 +52,7 @@ document.getElementById('clipGenerate').addEventListener('click',()=>{
   const url=document.getElementById('videoUrl').value.trim();
   const file=fileInput.files[0];
   if(!url&&!file){notify('Paste a video link or upload a video first.');return;}
-  if(url&&!/^https?:\\/\\//i.test(url)){notify('Please enter a complete link beginning with https://');return;}
+  if(url&&!/^https?:\/\//i.test(url)){notify('Please enter a complete link beginning with https://');return;}
   notify('Design preview only: connect the clip-processing and speech-to-text services to generate clips.');
 });
 
