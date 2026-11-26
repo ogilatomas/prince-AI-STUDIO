@@ -359,3 +359,22 @@ def scene_video_test(prompt: str = "A lion walking through a golden savanna at s
         raise HTTPException(status_code=500, detail=f"FFmpeg failed: {result.stderr[-500:]}")
 
     return FileResponse(video_path, media_type="video/mp4", filename="scene_test.mp4")
+
+
+# ---------------------------------------------------------------
+# List the AI models available to your Cloudflare account
+# ---------------------------------------------------------------
+import urllib.parse
+
+
+@app.get("/api/cloudflare-models")
+def cloudflare_models(task: str = "Text-to-Speech"):
+    try:
+        data = cloudflare_request("ai/models/search?per_page=50&task=" + urllib.parse.quote(task))
+    except urllib.error.HTTPError as error:
+        return {"task": task, "ok": False, "http_status": error.code}
+    except Exception as error:
+        return {"task": task, "ok": False, "error": str(error)}
+
+    names = [model.get("name") for model in data.get("result", [])]
+    return {"task": task, "ok": True, "models": names}
