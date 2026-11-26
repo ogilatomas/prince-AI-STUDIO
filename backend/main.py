@@ -269,3 +269,53 @@ Return ONLY JSON in exactly this shape:
         "total_seconds": round(sum(s["duration_seconds"] for s in clean_scenes), 1),
         "scenes": clean_scenes,
     }
+
+
+# ---------------------------------------------------------------
+# Cloudflare image generation (scene pictures)
+# ---------------------------------------------------------------
+import base64
+from fastapi import Response
+
+CF_IMAGE_MODEL = os.getenv("CF_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
+
+
+def generate_image_bytes(prompt: str) -> bytes:
+    # Always ask for a picture without words, because AI image models spell badly.
+    full_prompt = prompt[:1900] + ", no text, no letters, no words, no watermark"
+    payload = {"prompt": full_prompt, "steps": 4}
+    last_problem = "unknown"
+
+    for attempt in range(3):
+        try:
+            data = cloudflare_request(f"ai/run/{CF_IMAGE_MODEL}", payload, timeout=90)
+        except urllib.error.HTTPError as error:
+            last_problem = f"error {error.code} for model {CF_IMAGE_MODEL}"
+            if error.code in (429, 500, 502, 503, 504):
+                time.sleep(3)
+                continue
+            raise HTTPException(status_code=502, detail=f"Cloudflare image AI returned {last_problem}.")
+        except HTTPException:
+            raise
+        except Exception as error:
+            last_problem = str(error)
+            time.sleep(2)
+            continue
+
+        try:
+            return base64.b64decode(data["result"]["image"])
+        except Exception:
+            last_problem = "the AI answered, but without a picture"
+            continue
+
+    raise HTTPException(
+        status_code=502,
+        detail=f"Image generation failed. Last problem: {last_problem}. Please try again in a minute.",
+    )
+
+
+@app.get("/api/image-test")
+def image_test(prompt: str = "A lion walking through a golden savanna at sunset, cinematic lighting"):
+    image = generate_image_bytes(prompt)
+    media_type = "image/png" if image.startswith(b"\x89PNG") else "image/jpeg"
+    return Response(content=image, media_type=media_type)
