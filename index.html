@@ -80,10 +80,19 @@
               <div class="field"><label for="voice">Voice</label><select id="voice"><option>Natural voice</option><option>Warm storyteller</option><option>Energetic presenter</option><option>No narration</option></select></div>
               <div class="field"><label for="audio">Audio</label><select id="audio"><option>Voice + music + sound effects</option><option>Voice + music</option><option>Music + sound effects</option></select></div>
             </div>
-            <button class="primary-btn wide" id="videoGenerate">Prepare video <span>→</span></button>
-            <p class="fine-print">Prototype only: generation is not connected to an AI video engine yet. The 3-minute daily allowance is a design target, not a guaranteed free compute quota.</p>
+            <button class="primary-btn wide" id="videoGenerate">Create video <span>→</span></button>
+            <p class="fine-print">Fast Studio creates AI pictures and narration, adds camera motion, and joins everything with FFmpeg. Background music and sound effects are not added yet. Free servers can be slow, usage limits apply, and videos are limited to 1 minute while we test.</p>
+            <div class="result-box" id="videoResult" hidden>
+              <div class="result-head"><b id="resultStep">Starting...</b><span id="resultPercent">0%</span></div>
+              <div class="progress"><div class="progress-bar" id="resultBar"></div></div>
+              <p class="result-warning" id="resultWarnings" hidden></p>
+              <div id="resultDone" hidden>
+                <video id="resultVideo" controls playsinline></video>
+                <a class="secondary-btn download-link" id="resultDownload" href="#">Download video</a>
+              </div>
+            </div>
           </div>
-          <aside class="panel side-panel"><span class="tag">GENERATION SETTINGS</span><h3>Fast Studio</h3><p class="muted">The default mode combines generated scene visuals, motion, narration and audio.</p><div class="setting-line"><span>Full AI Motion</span><span class="soft-tag">Optional later</span></div><div class="setting-line"><span>Automatic sound design</span><span class="check">✓</span></div><div class="setting-line"><span>Scene planning</span><span class="check">✓</span></div><div class="setting-line"><span>Daily target</span><b>3 minutes</b></div><div class="notice">Actual generation speed and availability depend on the free computing service used.</div></aside>
+          <aside class="panel side-panel"><span class="tag">GENERATION SETTINGS</span><h3>Fast Studio</h3><p class="muted">The default mode combines generated scene visuals, motion, narration and audio.</p><div class="setting-line"><span>Full AI Motion</span><span class="soft-tag">Optional later</span></div><div class="setting-line"><span>Music and sound effects</span><span class="soft-tag">Coming next</span></div><div class="setting-line"><span>Scene planning</span><span class="check">✓</span></div><div class="setting-line"><span>Daily target</span><b>3 minutes</b></div><div class="notice">Actual generation speed and availability depend on the free computing service used.</div></aside>
         </div>
       </section>
 

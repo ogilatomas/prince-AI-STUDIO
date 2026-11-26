@@ -43,56 +43,139 @@ function notify(message){
   toast.textContent=message; toast.classList.add('show');
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>toast.classList.remove('show'),3800);
 }
-// ---- Text to Video: send the request to the backend ----
+// ---- Text to Video: create a real video through the backend ----
 const API_URL='https://prince-ai-studio-api.onrender.com';
+const MAX_SECONDS=60; // same limit as the backend while we test
 const videoButton=document.getElementById('videoGenerate');
 const videoButtonLabel=videoButton.innerHTML;
+const resultBox=document.getElementById('videoResult');
+const resultStep=document.getElementById('resultStep');
+const resultPercent=document.getElementById('resultPercent');
+const resultBar=document.getElementById('resultBar');
+const resultWarnings=document.getElementById('resultWarnings');
+const resultDone=document.getElementById('resultDone');
+const resultVideo=document.getElementById('resultVideo');
+const resultDownload=document.getElementById('resultDownload');
+
+function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+
+function showProgress(step,percent,isError){
+  resultBox.hidden=false;
+  resultStep.textContent=step;
+  resultStep.classList.toggle('result-error',!!isError);
+  resultPercent.textContent=percent+'%';
+  resultBar.style.width=percent+'%';
+}
+
+function finishButton(){
+  videoButton.disabled=false;
+  videoButton.innerHTML=videoButtonLabel;
+}
+
+async function readJson(response){
+  try{return await response.json();}catch(e){return {};}
+}
 
 videoButton.addEventListener('click',async()=>{
   const prompt=document.getElementById('videoPrompt').value.trim();
-  if(!prompt){notify('Please describe the video you want to create first.');return;}
-  if(prompt.length<5){notify('Please write at least 5 characters in the description.');return;}
+  if(prompt.length<5){notify('Please describe your video first (at least 5 characters).');return;}
 
   const chosen=document.querySelector('#videoDurations button.chosen');
+  const seconds=Number(chosen?chosen.dataset.seconds:60);
+  if(seconds>MAX_SECONDS){notify('While we test the free servers, videos are limited to 1 minute. Please choose 15, 30 or 1 min.');return;}
+
   const payload={
     prompt:prompt,
     style:document.getElementById('videoStyle').value,
     aspect_ratio:document.getElementById('videoRatio').value.split(' ')[0],
-    duration_seconds:Number(chosen?chosen.dataset.seconds:60),
+    duration_seconds:seconds,
     voice:document.getElementById('voice').value,
     audio:document.getElementById('audio').value
   };
 
   videoButton.disabled=true;
-  videoButton.textContent='Sending... the server may need up to a minute to wake up';
-  notify('Contacting the backend. If it was asleep, please wait up to a minute...');
+  videoButton.textContent='Working...';
+  resultDone.hidden=true;
+  resultWarnings.hidden=true;
+  resultVideo.removeAttribute('src');
+  showProgress('Contacting the server (it may need up to a minute to wake up)...',2,false);
 
   try{
+    // 1. Start the job
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),90000);
-    const response=await fetch(API_URL+'/api/prepare-video',{
+    const startResponse=await fetch(API_URL+'/api/create-video',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(payload),
       signal:controller.signal
     });
     clearTimeout(timeout);
-    const data=await response.json();
-    if(!response.ok){
-      console.error('Backend rejected the request:',data);
-      notify('The backend rejected the request. Open the browser console (F12) for details.');
-    }else{
-      console.log('Backend response:',data);
-      notify('Backend connected: your prompt and settings were received. Video generation is not connected yet.');
+    const started=await readJson(startResponse);
+    if(!startResponse.ok){
+      const message=typeof started.detail==='string'?started.detail:'The server rejected the request.';
+      showProgress(message,0,true);
+      notify(message);
+      finishButton();
+      return;
+    }
+
+    // 2. Check progress every 4 seconds
+    const jobId=started.job_id;
+    let failedChecks=0;
+    while(true){
+      await sleep(4000);
+      let job;
+      try{
+        const jobResponse=await fetch(API_URL+'/api/jobs/'+jobId);
+        job=await readJson(jobResponse);
+        if(jobResponse.status===404){
+          showProgress('The server restarted and lost this job. Please try again.',0,true);
+          finishButton();
+          return;
+        }
+        failedChecks=0;
+      }catch(error){
+        failedChecks++;
+        if(failedChecks>=6){
+          showProgress('Lost connection to the server. Please try again.',0,true);
+          finishButton();
+          return;
+        }
+        continue;
+      }
+
+      showProgress(job.step||'Working...',job.progress||0,false);
+      if(job.warnings&&job.warnings.length){
+        resultWarnings.textContent='Notice: '+job.warnings.join(' ');
+        resultWarnings.hidden=false;
+      }
+
+      if(job.status==='failed'){
+        showProgress('Failed: '+(job.error||'unknown problem'),0,true);
+        notify('The video could not be created.');
+        finishButton();
+        return;
+      }
+      if(job.status==='done'){
+        const videoUrl=API_URL+'/api/videos/'+jobId;
+        resultVideo.src=videoUrl;
+        resultDownload.href=videoUrl;
+        resultDone.hidden=false;
+        showProgress('Your video is ready: '+(job.title||'Untitled'),100,false);
+        notify('Your video is ready!');
+        finishButton();
+        return;
+      }
     }
   }catch(error){
-    console.error('Connection problem:',error);
-    notify('Could not reach the backend. Please try again in a minute.');
-  }finally{
-    videoButton.disabled=false;
-    videoButton.innerHTML=videoButtonLabel;
+    console.error('Video creation problem:',error);
+    showProgress('Could not reach the server. Please try again in a minute.',0,true);
+    notify('Could not reach the server.');
+    finishButton();
   }
 });
+
 document.getElementById('clipGenerate').addEventListener('click',()=>{
   const url=document.getElementById('videoUrl').value.trim();
   const file=fileInput.files[0];
