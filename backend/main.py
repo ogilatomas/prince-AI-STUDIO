@@ -378,3 +378,83 @@ def cloudflare_models(task: str = "Text-to-Speech"):
 
     names = [model.get("name") for model in data.get("result", [])]
     return {"task": task, "ok": True, "models": names}
+
+
+# ---------------------------------------------------------------
+# Cloudflare AI narration (text to speech)
+# ---------------------------------------------------------------
+CF_VOICE_MODEL = os.getenv("CF_VOICE_MODEL", "@cf/deepgram/aura-1")
+ENGLISH_SPEAKERS = [
+    "angus", "asteria", "arcas", "orion", "orpheus", "athena",
+    "luna", "zeus", "perseus", "helios", "hera", "stella",
+]
+
+
+def cloudflare_raw_request(path: str, payload: dict, timeout: int = 90):
+    # Like cloudflare_request, but returns the raw bytes and content type (for audio).
+    if not CF_ACCOUNT_ID or not CF_API_TOKEN:
+        raise HTTPException(
+            status_code=500,
+            detail="CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is missing on the server.",
+        )
+    url = f"{CF_BASE}/{CF_ACCOUNT_ID}/{path}"
+    headers = {
+        "Authorization": f"Bearer {CF_API_TOKEN}",
+        "Content-Type": "application/json",
+        "User-Agent": "PrinceAIStudio/0.3",
+    }
+    request = urllib.request.Request(
+        url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read(), response.headers.get("Content-Type", "")
+
+
+def generate_voice_bytes(text: str, speaker: str = "angus") -> bytes:
+    if speaker not in ENGLISH_SPEAKERS:
+        speaker = "angus"
+    payload = {"text": text, "speaker": speaker, "encoding": "mp3"}
+    last_problem = "unknown"
+
+    for attempt in range(3):
+        try:
+            body, content_type = cloudflare_raw_request(f"ai/run/{CF_VOICE_MODEL}", payload)
+        except urllib.error.HTTPError as error:
+            last_problem = f"error {error.code} for model {CF_VOICE_MODEL}"
+            if error.code in (429, 500, 502, 503, 504):
+                time.sleep(3)
+                continue
+            raise HTTPException(status_code=502, detail=f"Cloudflare voice AI returned {last_problem}.")
+        except HTTPException:
+            raise
+        except Exception as error:
+            last_problem = str(error)
+            time.sleep(2)
+            continue
+
+        if "json" in content_type.lower():
+            try:
+                data = json.loads(body.decode("utf-8"))
+                audio_b64 = (data.get("result") or {}).get("audio") or data.get("audio")
+                return base64.b64decode(audio_b64)
+            except Exception:
+                last_problem = "the AI answered with JSON, but without audio"
+                continue
+        if len(body) > 1000:
+            return body
+        last_problem = "the AI answered with an empty or very short audio file"
+
+    raise HTTPException(
+        status_code=502,
+        detail=f"Voice generation failed. Last problem: {last_problem}. Please try again in a minute.",
+    )
+
+
+@app.get("/api/voice-test")
+def voice_test(
+    text: str = "Welcome to Prince AI Studio. This is a test of the AI narration.",
+    speaker: str = "angus",
+):
+    # Short limit on purpose, to protect your free daily allowance while testing.
+    audio = generate_voice_bytes(text[:300], speaker)
+    return Response(content=audio, media_type="audio/mpeg")
