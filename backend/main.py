@@ -458,3 +458,205 @@ def voice_test(
     # Short limit on purpose, to protect your free daily allowance while testing.
     audio = generate_voice_bytes(text[:300], speaker)
     return Response(content=audio, media_type="audio/mpeg")
+
+
+# ---------------------------------------------------------------
+# Full video pipeline: plan -> pictures -> narration -> FFmpeg -> final video
+# Runs in the background so the web request does not time out.
+# ---------------------------------------------------------------
+import shutil
+import threading
+import uuid
+
+JOBS = {}
+JOBS_LOCK = threading.Lock()
+MAX_JOB_SECONDS = 60  # safety limit while we measure free-tier usage
+VOICE_MAP = {
+    "Natural voice": "asteria",
+    "Warm storyteller": "athena",
+    "Energetic presenter": "orion",
+}
+OUTPUT_SIZES = {"9:16": (540, 960), "16:9": (960, 540), "1:1": (720, 720)}
+RATIO_PARTS = {"9:16": (9, 16), "16:9": (16, 9), "1:1": (1, 1)}
+
+
+def run_ffmpeg(args: list, timeout: int = 180):
+    command = [imageio_ffmpeg.get_ffmpeg_exe(), "-y"] + args
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        raise RuntimeError("FFmpeg failed: " + result.stderr[-600:])
+
+
+def audio_duration(path: str) -> float:
+    result = subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-i", path],
+        capture_output=True, text=True, timeout=30,
+    )
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr)
+    if not match:
+        return 0.0
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def motion_filter(camera: str, frames: int, width: int, height: int) -> str:
+    n = max(frames, 1)
+    y = "ih/2-(ih/zoom/2)"
+    if camera == "zoom_out":
+        z, x = f"1.3-0.3*on/{n}", "iw/2-(iw/zoom/2)"
+    elif camera == "pan_right":
+        z, x = "1.2", f"(iw-iw/zoom)*on/{n}"
+    elif camera == "pan_left":
+        z, x = "1.2", f"(iw-iw/zoom)*(1-on/{n})"
+    else:
+        z, x = f"1+0.3*on/{n}", "iw/2-(iw/zoom/2)"
+    return f"zoompan=z='{z}':x='{x}':y='{y}':d={n}:s={width}x{height}:fps=25"
+
+
+def make_scene_clip(image_path, voice_path, duration, camera, ratio, out_path):
+    width, height = OUTPUT_SIZES.get(ratio, (540, 960))
+    a, b = RATIO_PARTS.get(ratio, (9, 16))
+    frames = int(round(duration * 25))
+    video_filter = (
+        f"crop='min(iw,ih*{a}/{b})':'min(ih,iw*{b}/{a})',"
+        f"scale={width * 2}:{height * 2},"
+        f"{motion_filter(camera, frames, width, height)},"
+        "format=yuv420p"
+    )
+    if voice_path:
+        audio_input = ["-i", voice_path]
+        audio_filter = ["-af", "apad"]
+    else:
+        audio_input = ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono"]
+        audio_filter = []
+
+    run_ffmpeg(
+        ["-i", image_path] + audio_input +
+        ["-vf", video_filter] + audio_filter +
+        ["-frames:v", str(frames), "-t", f"{duration:.2f}",
+         "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-r", "25",
+         "-c:a", "aac", "-ar", "44100", "-ac", "1", "-b:a", "96k",
+         out_path]
+    )
+
+
+def update_job(job_id: str, **changes):
+    with JOBS_LOCK:
+        JOBS[job_id].update(changes)
+
+
+def run_job(job_id: str, request: PrepareVideoRequest):
+    folder = os.path.join(tempfile.gettempdir(), f"prince_{job_id}")
+    os.makedirs(folder, exist_ok=True)
+    warnings = []
+    try:
+        update_job(job_id, status="running", step="Planning scenes", progress=5)
+        plan = plan_scenes(request)
+        scenes = plan["scenes"]
+
+        use_voice = request.voice != "No narration" and "Voice" in request.audio
+        speaker = VOICE_MAP.get(request.voice, "angus")
+        clip_paths = []
+
+        for index, scene in enumerate(scenes):
+            number = index + 1
+            progress = 10 + int(80 * index / len(scenes))
+
+            update_job(job_id, step=f"Scene {number} of {len(scenes)}: creating picture", progress=progress)
+            image_path = os.path.join(folder, f"scene{number}.jpg")
+            with open(image_path, "wb") as image_file:
+                image_file.write(generate_image_bytes(scene["image_prompt"]))
+
+            duration = float(scene["duration_seconds"])
+            voice_path = None
+            narration = scene["narration"].strip()
+            if use_voice and narration:
+                update_job(job_id, step=f"Scene {number} of {len(scenes)}: creating narration", progress=progress + 3)
+                try:
+                    audio = generate_voice_bytes(narration, speaker)
+                    candidate = os.path.join(folder, f"scene{number}.mp3")
+                    with open(candidate, "wb") as audio_file:
+                        audio_file.write(audio)
+                    spoken = audio_duration(candidate)
+                    if spoken > 0:
+                        duration = max(duration, spoken + 0.4)
+                    voice_path = candidate
+                except Exception as error:
+                    detail = getattr(error, "detail", str(error))
+                    warnings.append(f"Scene {number}: narration failed ({detail})")
+
+            update_job(job_id, step=f"Scene {number} of {len(scenes)}: building clip", progress=progress + 6, warnings=list(warnings))
+            clip_path = os.path.join(folder, f"clip{number}.mp4")
+            make_scene_clip(image_path, voice_path, duration, scene["camera"], request.aspect_ratio, clip_path)
+            clip_paths.append(clip_path)
+
+        update_job(job_id, step="Joining scenes into the final video", progress=92)
+        list_path = os.path.join(folder, "clips.txt")
+        with open(list_path, "w") as list_file:
+            for clip_path in clip_paths:
+                list_file.write(f"file '{clip_path}'\n")
+        final_path = os.path.join(folder, "final.mp4")
+        run_ffmpeg(["-f", "concat", "-safe", "0", "-i", list_path,
+                    "-c", "copy", "-movflags", "+faststart", final_path])
+
+        # Free disk space: keep only the final video.
+        for name in os.listdir(folder):
+            if name != "final.mp4":
+                os.remove(os.path.join(folder, name))
+
+        update_job(
+            job_id, status="done", step="Finished", progress=100,
+            video_path=final_path, title=plan.get("title", ""),
+            scene_count=len(scenes), warnings=list(warnings),
+        )
+    except Exception as error:
+        detail = getattr(error, "detail", str(error))
+        update_job(job_id, status="failed", step="Failed", error=str(detail), warnings=list(warnings))
+
+
+@app.post("/api/create-video")
+def create_video(request: PrepareVideoRequest):
+    if request.duration_seconds > MAX_JOB_SECONDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"While we test the free servers, videos are limited to {MAX_JOB_SECONDS} seconds.",
+        )
+    with JOBS_LOCK:
+        if any(job["status"] in ("queued", "running") for job in JOBS.values()):
+            raise HTTPException(status_code=409, detail="Another video is still being made. Please wait for it to finish.")
+        # Keep only the 5 newest jobs to save disk space.
+        for old_id in list(JOBS.keys())[:-4]:
+            old = JOBS.pop(old_id)
+            shutil.rmtree(os.path.join(tempfile.gettempdir(), f"prince_{old_id}"), ignore_errors=True)
+        job_id = uuid.uuid4().hex[:12]
+        JOBS[job_id] = {
+            "status": "queued", "step": "Waiting to start", "progress": 0,
+            "warnings": [], "error": None, "video_path": None,
+        }
+    threading.Thread(target=run_job, args=(job_id, request), daemon=True).start()
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found. The server may have restarted.")
+    return {
+        "job_id": job_id,
+        "status": job["status"],
+        "step": job["step"],
+        "progress": job["progress"],
+        "warnings": job["warnings"],
+        "error": job["error"],
+        "title": job.get("title"),
+        "scene_count": job.get("scene_count"),
+    }
+
+
+@app.get("/api/videos/{job_id}")
+def get_video(job_id: str):
+    job = JOBS.get(job_id)
+    if not job or job["status"] != "done" or not job["video_path"] or not os.path.exists(job["video_path"]):
+        raise HTTPException(status_code=404, detail="Video not ready or not found.")
+    return FileResponse(job["video_path"], media_type="video/mp4", filename="prince_video.mp4")
