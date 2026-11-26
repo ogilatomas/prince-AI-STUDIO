@@ -319,3 +319,43 @@ def image_test(prompt: str = "A lion walking through a golden savanna at sunset,
     image = generate_image_bytes(prompt)
     media_type = "image/png" if image.startswith(b"\x89PNG") else "image/jpeg"
     return Response(content=image, media_type=media_type)
+
+
+# ---------------------------------------------------------------
+# First real scene clip: AI picture + slow camera zoom
+# ---------------------------------------------------------------
+
+@app.get("/api/scene-video-test")
+def scene_video_test(prompt: str = "A lion walking through a golden savanna at sunset, cinematic lighting"):
+    image = generate_image_bytes(prompt)
+
+    folder = tempfile.mkdtemp()
+    image_path = os.path.join(folder, "scene.jpg")
+    video_path = os.path.join(folder, "scene.mp4")
+    with open(image_path, "wb") as image_file:
+        image_file.write(image)
+
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+    # Crop the picture to a tall 9:16 shape, then slowly zoom in for 5 seconds.
+    video_filter = (
+        "crop=ih*9/16:ih,scale=1080:1920,"
+        "zoompan=z='min(zoom+0.0015,1.3)':d=125:"
+        "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=540x960:fps=25,"
+        "format=yuv420p"
+    )
+    command = [
+        ffmpeg_path, "-y", "-i", image_path,
+        "-vf", video_filter,
+        "-frames:v", "125",
+        "-c:v", "libx264", "-preset", "ultrafast",
+        video_path,
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="FFmpeg took too long.")
+
+    if result.returncode != 0 or not os.path.exists(video_path):
+        raise HTTPException(status_code=500, detail=f"FFmpeg failed: {result.stderr[-500:]}")
+
+    return FileResponse(video_path, media_type="video/mp4", filename="scene_test.mp4")
